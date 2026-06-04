@@ -14,7 +14,6 @@ Returns (output: str, tool_calls: list[dict])
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -26,7 +25,7 @@ from backend.agents.prompts import (
     WORKER_UPSTREAM_CONTEXT_TEMPLATE,
 )
 from backend.config import settings
-from backend.models import DAGNode, ToolCallRecord
+from backend.models import DAGNode
 from backend.store.events import event_bus
 from backend.tracing.setup import get_tracer
 

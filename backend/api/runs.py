@@ -28,7 +28,6 @@ from backend.agents.compiler import compile_dag
 from backend.agents.graph import execute_run
 from backend.models import (
     CompilerError,
-    DAGPlan,
     NodeResponse,
     RunCreate,
     RunResponse,
@@ -84,23 +83,11 @@ async def _run_pipeline(run_id: str, goal: str) -> None:
         await runs_repo.update_dag(run_id, dag_json_str)
 
         # ---- Phase 2: Create node records ----
+        # Use the DAG node id directly as the DB primary key so that graph.py
+        # can update node status by dag_node.id without a separate mapping.
         node_records = [
             {
-                "id": str(uuid.uuid4()),  # UUID for this node instance
-                "run_id": run_id,
-                "name": n.name,
-                "description": n.description,
-                "depends_on": n.depends_on,
-                "prompt": WORKER_SYSTEM_PROMPT_PREVIEW,
-            }
-            for n in dag.nodes
-        ]
-
-        # We need to map dag node id → db node id so execute_run can reference them.
-        # Simplest approach: use dag node id directly as the DB row ID.
-        node_records_by_dag_id = [
-            {
-                "id": n.id,  # use dag node id as DB primary key for simplicity
+                "id": n.id,
                 "run_id": run_id,
                 "name": n.name,
                 "description": n.description,
@@ -109,7 +96,8 @@ async def _run_pipeline(run_id: str, goal: str) -> None:
             }
             for n in dag.nodes
         ]
-        await nodes_repo.create_many(node_records_by_dag_id)
+        await nodes_repo.create_many(node_records)
+
 
         # ---- Notify frontend of compiled DAG ----
         await event_bus.emit(
@@ -142,9 +130,6 @@ async def _run_pipeline(run_id: str, goal: str) -> None:
         # Always close the SSE queue so subscribers wake up
         await event_bus.close(run_id)
 
-
-# Small sentinel for the prompt field — replaced properly in Phase 3
-WORKER_SYSTEM_PROMPT_PREVIEW = None
 
 
 # ==============================================================================
