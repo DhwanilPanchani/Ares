@@ -1,0 +1,40 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Database & Storage
+ares.db
+ares.db-shm
+ares.db-wal
+chroma_db/
+
+# Agent outputs — keep the directory, ignore contents
+output/*
+!output/.gitkeep
+
+# Node / Frontend
+node_modules/
+.next/
+frontend/.env.local
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
