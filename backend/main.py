@@ -3,9 +3,9 @@ Project Ares — FastAPI application entry point.
 
 Starts the backend API server with:
   - CORS for the Next.js frontend at localhost:3000
-  - Lifespan handler initialising the SQLite database and OTel tracing
+  - Lifespan handler initialising SQLite DB and OTel tracing
   - /api/health endpoint
-  - Routers for runs (stub), stream (stub), traces (stub), replay (stub)
+  - All phase routers included
 """
 
 from __future__ import annotations
@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.store.database import init_db
+from backend.tracing.setup import init_tracing
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -43,9 +44,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     await init_db()
     logger.info("Database ready")
 
-    # TODO (Phase 3): Initialise OpenTelemetry tracer
-    # from backend.tracing.setup import init_tracing
-    # init_tracing()
+    # Initialise OpenTelemetry tracer
+    init_tracing()
 
     yield
 
@@ -97,9 +97,15 @@ async def health() -> dict[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# Routers (stub includes — full implementations added in later phases)
+# Routers
 # ---------------------------------------------------------------------------
 
-from backend.api.runs import router as runs_router  # noqa: E402
+from backend.api.runs import router as runs_router       # noqa: E402
+from backend.api.stream import router as stream_router   # noqa: E402
+from backend.api.traces import router as traces_router   # noqa: E402
+from backend.api.replay import router as replay_router   # noqa: E402
 
 app.include_router(runs_router, prefix="/api")
+app.include_router(stream_router, prefix="/api")
+app.include_router(traces_router, prefix="/api")
+app.include_router(replay_router, prefix="/api")
