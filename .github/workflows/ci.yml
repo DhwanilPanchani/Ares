@@ -24,7 +24,7 @@ jobs:
         run: pip install -e .
 
       - name: Run unit tests (excluding evals)
-        run: pytest backend/tests/ --ignore=backend/tests/evals/ -x -v
+        run: python -m pytest backend/tests/ --ignore=backend/tests/evals/ -x -v
 
   type-check:
     name: Type Check (TypeScript)
