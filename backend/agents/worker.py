@@ -273,7 +273,7 @@ async def _call_tool(
                 result = await tool_fn.arun(tool_args)
             else:
                 import asyncio
-                result = await asyncio.get_event_loop().run_in_executor(
+                result = await asyncio.get_running_loop().run_in_executor(
                     None, lambda: tool_fn.run(tool_args)
                 )
             return str(result)

@@ -29,6 +29,7 @@ output/*
 # Node / Frontend
 node_modules/
 .next/
+frontend/.next/
 frontend/.env.local
 
 # macOS

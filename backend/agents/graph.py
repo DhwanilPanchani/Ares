@@ -88,7 +88,7 @@ def _make_node_fn(dag_node: DAGNode, run_id: str):
         started_at = datetime.now(timezone.utc).isoformat()
 
         # ---- Mark running ----
-        await nodes_repo.update_status(node_id, "running", started_at=started_at)
+        await nodes_repo.update_status(node_id, run_id, "running", started_at=started_at)
         await event_bus.emit(
             run_id,
             "node_started",
@@ -110,12 +110,13 @@ def _make_node_fn(dag_node: DAGNode, run_id: str):
             # Persist to SQLite
             await nodes_repo.update_status(
                 node_id,
+                run_id,
                 "success",
                 completed_at=completed_at,
                 output=output,
             )
             if tool_calls:
-                await nodes_repo.update_tool_calls(node_id, tool_calls)
+                await nodes_repo.update_tool_calls(node_id, run_id, tool_calls)
 
             # Emit completion event
             await event_bus.emit(
@@ -138,7 +139,7 @@ def _make_node_fn(dag_node: DAGNode, run_id: str):
             completed_at = datetime.now(timezone.utc).isoformat()
 
             await nodes_repo.update_status(
-                node_id, "failed", completed_at=completed_at, error=error_msg
+                node_id, run_id, "failed", completed_at=completed_at, error=error_msg
             )
             await event_bus.emit(
                 run_id,
@@ -252,12 +253,15 @@ async def execute_run(run_id: str, dag: DAGPlan, goal: str) -> None:
             run_id, "completed", completed_at=completed_at
         )
 
+        # Run Critic before emitting run_completed so trust_scored fires first
+        try:
+            from backend.agents.critic import score_run
+            await score_run(run_id, goal, final_output, final_state.get("tool_calls_log", []))
+        except Exception as exc:
+            logger.warning("Critic failed for run %s (non-fatal): %s", run_id, exc)
+
         await event_bus.emit(run_id, "run_completed", {"output": final_output})
         logger.info("Run %s completed successfully", run_id)
-
-        # Phase 4: Critic agent call goes here
-        # from backend.agents.critic import score_run
-        # await score_run(run_id, goal, final_output, final_state["tool_calls_log"])
 
     except Exception as exc:
         logger.error("execute_run failed for run %s: %s", run_id, exc, exc_info=True)

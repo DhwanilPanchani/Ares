@@ -27,18 +27,19 @@ CREATE INDEX IF NOT EXISTS idx_runs_created_at ON runs(created_at DESC);
 -- One row per DAG node per run.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS nodes (
-    id           TEXT PRIMARY KEY,               -- UUID
+    id           TEXT NOT NULL,                   -- Compiler-generated name (e.g. research_openai)
     run_id       TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    name         TEXT NOT NULL,                  -- Short human-readable name
-    description  TEXT NOT NULL,                  -- Actionable one-sentence task description
-    status       TEXT NOT NULL DEFAULT 'pending',-- pending|running|success|failed
-    depends_on   TEXT NOT NULL DEFAULT '[]',     -- JSON array of node IDs
-    prompt       TEXT,                           -- System prompt sent to the worker agent
-    output       TEXT,                           -- Raw LLM output
-    tool_calls   TEXT NOT NULL DEFAULT '[]',     -- JSON array of tool call records
+    name         TEXT NOT NULL,                   -- Short human-readable name
+    description  TEXT NOT NULL,                   -- Actionable one-sentence task description
+    status       TEXT NOT NULL DEFAULT 'pending', -- pending|running|success|failed
+    depends_on   TEXT NOT NULL DEFAULT '[]',      -- JSON array of node IDs
+    prompt       TEXT,                            -- System prompt sent to the worker agent
+    output       TEXT,                            -- Raw LLM output
+    tool_calls   TEXT NOT NULL DEFAULT '[]',      -- JSON array of tool call records
     started_at   TEXT,
     completed_at TEXT,
-    error        TEXT
+    error        TEXT,
+    PRIMARY KEY (id, run_id)                      -- Unique within a run, not globally
 );
 
 CREATE INDEX IF NOT EXISTS idx_nodes_run_id ON nodes(run_id);
@@ -53,7 +54,7 @@ CREATE TABLE IF NOT EXISTS spans (
     trace_id    TEXT NOT NULL,                   -- Equals run_id
     parent_id   TEXT,                            -- Parent span ID, nullable
     run_id      TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-    node_id     TEXT REFERENCES nodes(id) ON DELETE CASCADE,
+    node_id     TEXT,                            -- Compiler-generated node name (informational, not FK)
     name        TEXT NOT NULL,                   -- e.g. "llm.call" or "tool.web_search"
     kind        TEXT NOT NULL,                   -- llm|tool|agent|system
     attributes  TEXT NOT NULL DEFAULT '{}',      -- JSON object

@@ -37,11 +37,6 @@ class Settings(BaseSettings):
     langchain_project: str = Field(default="ares")
 
     # ------------------------------------------------------------------
-    # Brave Search
-    # ------------------------------------------------------------------
-    brave_search_api_key: str = Field(default="")
-
-    # ------------------------------------------------------------------
     # Database & Storage
     # ------------------------------------------------------------------
     database_url: str = Field(default="sqlite+aiosqlite:///./ares.db")

@@ -75,6 +75,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from backend.tracing.middleware import TracingMiddleware  # noqa: E402
+app.add_middleware(TracingMiddleware)
+
 
 # ---------------------------------------------------------------------------
 # Health endpoint

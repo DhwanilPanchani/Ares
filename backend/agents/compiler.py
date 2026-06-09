@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from backend.agents.prompts import ORCHESTRATOR_SYSTEM_PROMPT
 from backend.config import settings
 from backend.models import CompilerError, DAGPlan
+from backend.tracing.setup import get_tracer
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ MAX_RETRIES = 3
 OLLAMA_GENERATE_URL = "{base}/api/chat"
 
 
-async def compile_dag(goal: str) -> DAGPlan:
+async def compile_dag(goal: str, run_id: str = "") -> DAGPlan:
     """
     Convert a natural language goal into a validated DAGPlan.
 
@@ -33,7 +34,8 @@ async def compile_dag(goal: str) -> DAGPlan:
     Retries up to MAX_RETRIES times on parse or validation errors.
 
     Args:
-        goal: The natural language goal string (10–500 chars).
+        goal:   The natural language goal string (10–500 chars).
+        run_id: The parent run ID for OTel span attribution. Empty string if unknown.
 
     Returns:
         A validated DAGPlan with at least 2 nodes.
@@ -41,6 +43,7 @@ async def compile_dag(goal: str) -> DAGPlan:
     Raises:
         CompilerError: If all retry attempts fail.
     """
+    tracer = get_tracer()
     url = OLLAMA_GENERATE_URL.format(base=settings.ollama_base_url)
     last_raw: str = ""
     last_error: str = ""
@@ -76,6 +79,8 @@ async def compile_dag(goal: str) -> DAGPlan:
                     "content": (
                         f"Your previous response had this validation error:\n\n"
                         f"{last_error}\n\n"
+                        f"You must return NO MORE THAN 10 nodes total. "
+                        f"Combine related tasks into single nodes if needed.\n\n"
                         f"Fix the JSON and return ONLY the corrected JSON object."
                     ),
                 })
@@ -91,32 +96,41 @@ async def compile_dag(goal: str) -> DAGPlan:
                 },
             }
 
-            try:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-            except httpx.HTTPStatusError as exc:
-                logger.warning(
-                    "Ollama HTTP error on attempt %d: %s", attempt, exc
-                )
-                last_error = f"Ollama returned HTTP {exc.response.status_code}: {exc.response.text[:200]}"
-                if attempt == MAX_RETRIES:
-                    raise CompilerError(
-                        f"Ollama unavailable after {MAX_RETRIES} attempts: {last_error}",
-                        last_raw=last_raw,
-                    ) from exc
-                continue
-            except httpx.RequestError as exc:
-                logger.warning(
-                    "Ollama connection error on attempt %d: %s", attempt, exc
-                )
-                last_error = f"Connection error: {exc}"
-                if attempt == MAX_RETRIES:
-                    raise CompilerError(
-                        f"Cannot connect to Ollama after {MAX_RETRIES} attempts. "
-                        f"Is Ollama running at {settings.ollama_base_url}?",
-                        last_raw=last_raw,
-                    ) from exc
-                continue
+            with tracer.start_as_current_span(
+                "llm.call",
+                attributes={
+                    "model": settings.ollama_orchestrator_model,
+                    "run_id": run_id,
+                    "node_id": "compiler",
+                    "attempt": attempt,
+                },
+            ):
+                try:
+                    response = await client.post(url, json=payload)
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    logger.warning(
+                        "Ollama HTTP error on attempt %d: %s", attempt, exc
+                    )
+                    last_error = f"Ollama returned HTTP {exc.response.status_code}: {exc.response.text[:200]}"
+                    if attempt == MAX_RETRIES:
+                        raise CompilerError(
+                            f"Ollama unavailable after {MAX_RETRIES} attempts: {last_error}",
+                            last_raw=last_raw,
+                        ) from exc
+                    continue
+                except httpx.RequestError as exc:
+                    logger.warning(
+                        "Ollama connection error on attempt %d: %s", attempt, exc
+                    )
+                    last_error = f"Connection error: {exc}"
+                    if attempt == MAX_RETRIES:
+                        raise CompilerError(
+                            f"Cannot connect to Ollama after {MAX_RETRIES} attempts. "
+                            f"Is Ollama running at {settings.ollama_base_url}?",
+                            last_raw=last_raw,
+                        ) from exc
+                    continue
 
             # Extract text content from the response
             resp_json = response.json()
@@ -143,6 +157,15 @@ async def compile_dag(goal: str) -> DAGPlan:
             # Inject the goal if the model omitted it
             if "goal" not in raw_dict:
                 raw_dict["goal"] = goal
+
+            # Post-process: truncate nodes to 12 if the model exceeded the limit
+            if isinstance(raw_dict.get("nodes"), list) and len(raw_dict["nodes"]) > 12:
+                logger.warning(
+                    "Model returned %d nodes on attempt %d — truncating to 12",
+                    len(raw_dict["nodes"]),
+                    attempt,
+                )
+                raw_dict["nodes"] = raw_dict["nodes"][:12]
 
             # Validate against DAGPlan Pydantic model
             try:

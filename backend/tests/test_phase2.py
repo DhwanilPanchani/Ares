@@ -259,8 +259,8 @@ class TestNodesRepo:
             {"id": "node_a", "run_id": run_id, "name": "A",
              "description": "Do A.", "depends_on": []}
         ])
-        await nodes_repo.update_status("node_a", "running", started_at="2026-01-01T00:00:00+00:00")
-        node = await nodes_repo.get("node_a")
+        await nodes_repo.update_status("node_a", run_id, "running", started_at="2026-01-01T00:00:00+00:00")
+        node = await nodes_repo.get("node_a", run_id)
         assert node["status"] == "running"
         assert node["started_at"] == "2026-01-01T00:00:00+00:00"
 
@@ -274,11 +274,11 @@ class TestNodesRepo:
              "description": "Do B.", "depends_on": []}
         ])
         await nodes_repo.update_status(
-            "node_b", "success",
+            "node_b", run_id, "success",
             completed_at="2026-01-01T01:00:00+00:00",
             output="Here is the output.",
         )
-        node = await nodes_repo.get("node_b")
+        node = await nodes_repo.get("node_b", run_id)
         assert node["status"] == "success"
         assert node["output"] == "Here is the output."
 
@@ -292,8 +292,8 @@ class TestNodesRepo:
              "description": "Do C.", "depends_on": []}
         ])
         tool_calls = [{"tool": "web_search", "args": {"query": "test"}, "result": "Found things.", "error": None}]
-        await nodes_repo.update_tool_calls("node_c", tool_calls)
-        node = await nodes_repo.get("node_c")
+        await nodes_repo.update_tool_calls("node_c", run_id, tool_calls)
+        node = await nodes_repo.get("node_c", run_id)
         assert node["tool_calls"] == tool_calls
 
 

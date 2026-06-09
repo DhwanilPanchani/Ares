@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import operator
 from collections import defaultdict, deque
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -87,7 +87,7 @@ class DAGPlan(BaseModel):
     model_config = {"strict": True}
 
     goal: str = Field(..., min_length=10, max_length=500)
-    nodes: list[DAGNode] = Field(..., min_length=1, max_length=8)
+    nodes: list[DAGNode] = Field(..., min_length=2, max_length=12)
 
     @model_validator(mode="after")
     def validate_depends_on_references(self) -> "DAGPlan":
@@ -196,9 +196,23 @@ class TrustScore(BaseModel):
     factual_grounding: float = Field(..., ge=0.0, le=1.0)
     goal_completion: float = Field(..., ge=0.0, le=1.0)
     tool_error_rate: float = Field(..., ge=0.0, le=1.0)
-    trust_score: float = Field(..., ge=0.0, le=1.0)
+    trust_score: float | None = Field(default=None, ge=0.0, le=1.0)
     critique_text: str
-    flagged_span_ids: list[str] = Field(default_factory=list)
+    flagged_span_ids: list[Union[str, int]] = Field(default_factory=list)
+
+    @field_validator("flagged_span_ids", mode="before")
+    @classmethod
+    def coerce_span_ids_to_str(cls, v: Any) -> list[str]:
+        if not isinstance(v, list):
+            return []
+        return [str(item) for item in v]
+
+    @model_validator(mode="after")
+    def compute_trust_score_if_none(self) -> "TrustScore":
+        if self.trust_score is None:
+            raw = (self.factual_grounding + self.goal_completion + (1 - self.tool_error_rate)) / 3
+            self.trust_score = max(0.0, min(1.0, raw))
+        return self
 
 
 class RunResponse(BaseModel):

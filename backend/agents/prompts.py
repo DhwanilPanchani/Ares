@@ -22,10 +22,21 @@ RULES — follow all of them exactly:
 6. "description" is ONE actionable sentence telling the worker agent exactly what to do.
 7. "depends_on" is an array of node IDs that must complete before this node can run. Use [] for root nodes.
 8. "tool_hint" must be exactly one of: "web_search", "write_file", "read_file", "run_python", "http_get", "none".
-9. Maximum 8 nodes total. Minimum 2 nodes. Every goal must decompose into at least two steps.
+9. Minimum 2 nodes. Every goal must decompose into at least two steps.
 10. All "depends_on" references must refer to other node IDs in this same DAG. No dangling references.
 11. The depends_on graph must be acyclic. A node cannot (directly or indirectly) depend on itself.
 12. Prefer parallel execution: if two tasks are independent, give them both empty depends_on so they run concurrently.
+
+HARD LIMIT: Maximum 10 nodes total. If you need more, combine related subtasks into one node. Never exceed 10 nodes.
+
+Node count guidelines:
+- Simple single-topic goals: 2-4 nodes
+- Medium goals with 2-3 research areas: 4-6 nodes
+- Complex goals with 4+ parallel research streams: 6-10 nodes
+- Never exceed 10 nodes regardless of complexity
+- Always maximize parallelism — if tasks are independent, they must be separate parallel nodes, not sequential
+
+For goals that mention specific companies or topics to research separately, create one dedicated research node per company/topic with no dependencies so they run in parallel simultaneously.
 
 EXAMPLE OUTPUT FORMAT:
 {

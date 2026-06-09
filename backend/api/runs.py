@@ -24,6 +24,8 @@ from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
+from backend.store.database import get_db
+
 from backend.agents.compiler import compile_dag
 from backend.agents.graph import execute_run
 from backend.models import (
@@ -71,7 +73,7 @@ async def _run_pipeline(run_id: str, goal: str) -> None:
         await runs_repo.update_status(run_id, "compiling")
 
         try:
-            dag: DAGPlan = await compile_dag(goal)
+            dag: DAGPlan = await compile_dag(goal, run_id=run_id)
         except CompilerError as exc:
             logger.error("DAG compilation failed for run %s: %s", run_id, exc)
             await runs_repo.update_status(run_id, "failed", error=str(exc))
@@ -171,6 +173,18 @@ async def list_runs() -> list[RunResponse]:
         score_row = await scores_repo.get_for_run(run["id"])
         result.append(_build_run_response(run, score_row=score_row))
     return result
+
+
+@router.delete("/runs/{run_id}", status_code=200)
+async def delete_run(run_id: str) -> dict:
+    """Delete a run and all related nodes, spans, and scores (cascade)."""
+    run = await runs_repo.get(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found.")
+    async with get_db() as db:
+        await db.execute("DELETE FROM runs WHERE id = ?", (run_id,))
+        await db.commit()
+    return {"deleted": run_id}
 
 
 @router.get("/runs/{run_id}", response_model=RunResponse)

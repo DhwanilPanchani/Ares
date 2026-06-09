@@ -28,17 +28,21 @@ class EvalCase:
     min_parallel_nodes: int = 1
 
 
-# Five canonical eval cases (pass criteria from 10-EVAL-HARNESS.md)
+# Five canonical eval cases — four from Phase 4 + one updated in Phase 6
 GOLDEN_EVALS: list[EvalCase] = [
     EvalCase(
-        id="sre_diagnosis",
+        id="competitive_intel",
         goal=(
-            "Check the health of a local test HTTP server at http://localhost:9999, "
-            "identify any slow or failing endpoints, and write a diagnosis report to output/sre_report.md."
+            "Research the AI companies Anthropic, OpenAI, and Cohere. "
+            "For each company, summarize their main products, identify their tech stack, "
+            "and flag how they compete with each other. "
+            "Write a structured report to output/competitive_intel.md."
         ),
-        min_trust_score=0.70,
-        required_tools=["http_get", "write_file"],
-        expected_output_files=["sre_report.md"],
+        min_trust_score=0.65,
+        required_tools=["web_search", "write_file"],
+        expected_output_files=["competitive_intel.md"],
+        expected_keywords=["Anthropic", "OpenAI", "Cohere"],
+        min_parallel_nodes=3,
     ),
     EvalCase(
         id="parallel_research",

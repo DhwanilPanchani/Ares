@@ -3,6 +3,10 @@ Async repository for the nodes table.
 
 Nodes are created in bulk at DAG compile time, then updated individually
 as each worker agent runs.
+
+Primary key is composite (id, run_id) — the compiler-generated node name
+(e.g. "research_openai") is unique within a run but not across runs.
+All write operations require both node_id and run_id to target the correct row.
 """
 
 from __future__ import annotations
@@ -22,7 +26,7 @@ async def create_many(nodes: list[dict[str, Any]]) -> None:
     Bulk-insert node records for a run.
 
     Each dict must have: id, run_id, name, description, depends_on (list).
-    Optional: prompt, tool_hint.
+    Optional: prompt.
     """
     now = datetime.now(timezone.utc).isoformat()
     rows = [
@@ -49,11 +53,11 @@ async def create_many(nodes: list[dict[str, Any]]) -> None:
     logger.debug("Inserted %d nodes", len(rows))
 
 
-async def get(node_id: str) -> dict[str, Any] | None:
+async def get(node_id: str, run_id: str) -> dict[str, Any] | None:
     """Return a single node row as a dict, or None if not found."""
     async with get_db() as db:
         cursor = await db.execute(
-            "SELECT * FROM nodes WHERE id = ?", (node_id,)
+            "SELECT * FROM nodes WHERE id = ? AND run_id = ?", (node_id, run_id)
         )
         row = await cursor.fetchone()
 
@@ -74,6 +78,7 @@ async def list_for_run(run_id: str) -> list[dict[str, Any]]:
 
 async def update_status(
     node_id: str,
+    run_id: str,
     status: str,
     *,
     started_at: str | None = None,
@@ -98,30 +103,48 @@ async def update_status(
         parts.append("error = ?")
         params.append(error)
 
-    params.append(node_id)
-    sql = f"UPDATE nodes SET {', '.join(parts)} WHERE id = ?"
+    params.extend([node_id, run_id])
+    sql = f"UPDATE nodes SET {', '.join(parts)} WHERE id = ? AND run_id = ?"
 
     async with get_db() as db:
         await db.execute(sql, params)
         await db.commit()
 
 
-async def update_tool_calls(node_id: str, tool_calls: list[dict]) -> None:
+async def update_tool_calls(node_id: str, run_id: str, tool_calls: list[dict]) -> None:
     """Persist the list of tool call records for a node."""
     async with get_db() as db:
         await db.execute(
-            "UPDATE nodes SET tool_calls = ? WHERE id = ?",
-            (json.dumps(tool_calls), node_id),
+            "UPDATE nodes SET tool_calls = ? WHERE id = ? AND run_id = ?",
+            (json.dumps(tool_calls), node_id, run_id),
         )
         await db.commit()
 
 
-async def update_prompt(node_id: str, prompt: str) -> None:
+async def reset_to_pending(node_id: str, run_id: str) -> None:
+    """Reset a node back to pending status, clearing all results from a previous run."""
+    async with get_db() as db:
+        await db.execute(
+            """UPDATE nodes
+               SET status = 'pending',
+                   output = NULL,
+                   error = NULL,
+                   tool_calls = NULL,
+                   started_at = NULL,
+                   completed_at = NULL
+               WHERE id = ? AND run_id = ?""",
+            (node_id, run_id),
+        )
+        await db.commit()
+    logger.debug("Node %s (run %s) reset to pending", node_id, run_id)
+
+
+async def update_prompt(node_id: str, run_id: str, prompt: str) -> None:
     """Store the system prompt that was sent to the worker agent."""
     async with get_db() as db:
         await db.execute(
-            "UPDATE nodes SET prompt = ? WHERE id = ?",
-            (prompt, node_id),
+            "UPDATE nodes SET prompt = ? WHERE id = ? AND run_id = ?",
+            (prompt, node_id, run_id),
         )
         await db.commit()
 
