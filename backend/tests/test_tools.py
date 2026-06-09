@@ -44,41 +44,20 @@ def tmp_output_dir(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_web_search_returns_formatted_results():
-    """Happy path: Brave API returns results → formatted string returned."""
-    fake_response_data = {
-        "web": {
-            "results": [
-                {
-                    "title": "Result One",
-                    "url": "https://example.com/1",
-                    "description": "Description one",
-                },
-                {
-                    "title": "Result Two",
-                    "url": "https://example.com/2",
-                    "description": "Description two",
-                },
-            ]
-        }
-    }
+    """Happy path: DDGS returns results → formatted string returned."""
+    import backend.tools.web_search as ws_mod
 
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_response.json.return_value = fake_response_data
+    fake_results = [
+        {"title": "Result One", "href": "https://example.com/1", "body": "Description one"},
+        {"title": "Result Two", "href": "https://example.com/2", "body": "Description two"},
+    ]
 
-    with (
-        patch("backend.config.settings.brave_search_api_key", "fake-key"),
-        patch("httpx.AsyncClient") as mock_client_cls,
-    ):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client_cls.return_value = mock_client
+    with patch.object(ws_mod, "DDGS") as mock_ddgs_cls:
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.return_value = fake_results
+        mock_ddgs_cls.return_value = mock_ddgs
 
-        from backend.tools.web_search import web_search
-
-        result = await web_search.arun({"query": "test query"})
+        result = await ws_mod.web_search.arun({"query": "test query"})
 
     assert "Result One" in result
     assert "https://example.com/1" in result
@@ -87,61 +66,48 @@ async def test_web_search_returns_formatted_results():
 
 
 @pytest.mark.asyncio
-async def test_web_search_no_api_key_returns_error():
-    """Missing API key → returns error string, does not raise."""
-    with patch("backend.config.settings.brave_search_api_key", ""):
-        from backend.tools.web_search import web_search
+async def test_web_search_exception_returns_error_string():
+    """DDGS raises an exception → returns error string, does not raise."""
+    import backend.tools.web_search as ws_mod
 
-        result = await web_search.arun({"query": "test"})
+    with patch.object(ws_mod, "DDGS") as mock_ddgs_cls:
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.side_effect = Exception("connection error")
+        mock_ddgs_cls.return_value = mock_ddgs
 
-    assert "Error" in result
-    assert "BRAVE_SEARCH_API_KEY" in result
+        result = await ws_mod.web_search.arun({"query": "test"})
+
+    assert "error" in result.lower()
 
 
 @pytest.mark.asyncio
 async def test_web_search_timeout_returns_error():
-    """HTTP timeout → returns error string, does not raise."""
-    with (
-        patch("backend.config.settings.brave_search_api_key", "fake-key"),
-        patch("httpx.AsyncClient") as mock_client_cls,
-    ):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
-        mock_client_cls.return_value = mock_client
+    """DDGS timeout → returns error string, does not raise."""
+    import backend.tools.web_search as ws_mod
 
-        from backend.tools.web_search import web_search
+    with patch.object(ws_mod, "DDGS") as mock_ddgs_cls:
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.side_effect = Exception("timed out")
+        mock_ddgs_cls.return_value = mock_ddgs
 
-        result = await web_search.arun({"query": "slow query"})
+        result = await ws_mod.web_search.arun({"query": "slow query"})
 
-    assert "Error" in result
-    assert "timed out" in result.lower() or "timeout" in result.lower()
+    assert "error" in result.lower()
 
 
 @pytest.mark.asyncio
 async def test_web_search_empty_results():
-    """API returns no results → informative message, no exception."""
-    fake_response_data = {"web": {"results": []}}
-    mock_response = MagicMock()
-    mock_response.raise_for_status = MagicMock()
-    mock_response.json.return_value = fake_response_data
+    """DDGS returns no results → informative message, no exception."""
+    import backend.tools.web_search as ws_mod
 
-    with (
-        patch("backend.config.settings.brave_search_api_key", "fake-key"),
-        patch("httpx.AsyncClient") as mock_client_cls,
-    ):
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.get = AsyncMock(return_value=mock_response)
-        mock_client_cls.return_value = mock_client
+    with patch.object(ws_mod, "DDGS") as mock_ddgs_cls:
+        mock_ddgs = MagicMock()
+        mock_ddgs.text.return_value = []
+        mock_ddgs_cls.return_value = mock_ddgs
 
-        from backend.tools.web_search import web_search
+        result = await ws_mod.web_search.arun({"query": "nothing"})
 
-        result = await web_search.arun({"query": "nothing"})
-
-    assert "No search results" in result
+    assert "no results" in result.lower()
 
 
 # ==============================================================================
